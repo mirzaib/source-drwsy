@@ -1,0 +1,79 @@
+!pip install opencv-python imutils dlib pygame
+
+import cv2
+import imutils
+from imutils import face_utils
+import dlib
+import numpy as np
+import pygame
+
+# Load the drowsiness detector model
+detector = dlib.get_frontal_face_detector()
+predictor = dlib.shape_predictor("shape_predictor_68_face_landmarks.dat")
+
+# Define two arrays to store the x and y coordinates of the landmarks
+left_eye = []
+right_eye = []
+
+# Load the audio alert
+pygame.mixer.init()
+alert_sound = pygame.mixer.Sound("alert.wav")
+
+# Load the video stream
+cap = cv2.VideoCapture(0)
+
+# Set the aspect ratio threshold and the number of consecutive frames with low aspect ratio
+EYE_AR_THRESH = 0.2
+EYE_AR_CONSEC_FRAMES = 8
+COUNTER = 0
+
+while True:
+    # Read a frame from the video stream
+    ret, frame = cap.read()
+    frame = imutils.resize(frame, width=450)
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+
+    # Detect faces in the frame
+    rects = detector(gray, 0)
+
+    # Loop over the face detections
+    for rect in rects:
+        # Predict the facial landmarks for the face
+        shape = predictor(gray, rect)
+        shape = face_utils.shape_to_np(shape)
+
+        # Extract the coordinates of the left and right eye landmarks
+        left_eye = shape[36:42]
+        right_eye = shape[42:48]
+
+        # Calculate the aspect ratio of the eyes
+        left_ear = eye_aspect_ratio(left_eye)
+        right_ear = eye_aspect_ratio(right_eye)
+
+        ear = (left_ear + right_ear) / 2.0
+
+        # Check if the aspect ratio is below a certain threshold
+        if ear < EYE_AR_THRESH:
+            COUNTER += 1
+
+            # If the number of consecutive frames with low aspect ratio is greater than a threshold,
+            # then the driver is considered drowsy
+            if COUNTER >= EYE_AR_CONSEC_FRAMES:
+                cv2.putText(frame, "DROWSINESS ALERT!", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+                alert_sound.play()
+
+        # If the aspect ratio is above the threshold, reset the counter
+        else:
+            COUNTER = 0
+
+    # Show the frame
+    cv2.imshow("Frame", frame)
+    key = cv2.waitKey(1) & 0xFF
+
+    # Break the loop if the 'q' key is pressed
+    if key == ord("q"):
+        break
+
+# Release the video stream
+cap.release()
+cv2.destroyAllWindows()
